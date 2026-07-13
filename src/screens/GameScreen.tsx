@@ -201,7 +201,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         nextStatus = 'fail'
       }
 
-      if (nextStatus === 'clear') {
+      if (nextStatus !== 'playing') {
         saveHighScoreIfBetter(scoreRef.current)
       }
 
