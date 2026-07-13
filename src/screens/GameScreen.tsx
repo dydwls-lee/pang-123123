@@ -11,7 +11,6 @@ const WIRE_SPEED = 10
 const WIRE_WIDTH = 3
 
 interface Wire {
-  id: number
   x: number
   y: number
 }
@@ -22,20 +21,16 @@ interface GameScreenProps {
 
 function GameScreen({ onBackToMain }: GameScreenProps) {
   const [playerX, setPlayerX] = useState((GAME_WIDTH - PLAYER_WIDTH) / 2)
-  const [wires, setWires] = useState<Wire[]>([])
+  const [wire, setWire] = useState<Wire | null>(null)
 
   const pressedKeys = useRef(new Set<string>())
-  const nextWireId = useRef(0)
   const playerXRef = useRef(playerX)
   playerXRef.current = playerX
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === ' ' && !pressedKeys.current.has(e.key)) {
-        setWires((prev) => [
-          ...prev,
-          { id: nextWireId.current++, x: playerXRef.current + PLAYER_WIDTH / 2, y: PLAYER_Y },
-        ])
+        setWire((prev) => prev ?? { x: playerXRef.current + PLAYER_WIDTH / 2, y: PLAYER_Y })
       }
       pressedKeys.current.add(e.key)
     }
@@ -62,11 +57,11 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         return Math.max(0, Math.min(GAME_WIDTH - PLAYER_WIDTH, next))
       })
 
-      setWires((prev) =>
-        prev
-          .map((wire) => ({ ...wire, y: wire.y - WIRE_SPEED }))
-          .filter((wire) => wire.y > 0),
-      )
+      setWire((prev) => {
+        if (!prev) return prev
+        const nextY = prev.y - WIRE_SPEED
+        return nextY > 0 ? { ...prev, y: nextY } : null
+      })
 
       frameId = requestAnimationFrame(tick)
     }
@@ -87,9 +82,8 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
             height: PLAYER_HEIGHT,
           }}
         />
-        {wires.map((wire) => (
+        {wire && (
           <div
-            key={wire.id}
             className="wire"
             style={{
               left: wire.x - WIRE_WIDTH / 2,
@@ -98,7 +92,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
               height: PLAYER_Y - wire.y,
             }}
           />
-        ))}
+        )}
       </div>
       <button type="button" className="back-button" onClick={onBackToMain}>
         메인 화면으로
