@@ -7,6 +7,12 @@
   height: 100vh;
 }
 
+.hud {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
 .game-area {
   position: relative;
   max-width: 100%;

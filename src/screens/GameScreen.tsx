@@ -14,6 +14,9 @@ const BALL_RADIUS = 25
 const GRAVITY = 0.3
 const BALL_START_VX = 4
 
+const HP_MAX = 100
+const HP_DAMAGE = 10
+
 interface Wire {
   x: number
   y: number
@@ -26,6 +29,26 @@ interface Ball {
   vy: number
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function circleRectOverlap(
+  circleX: number,
+  circleY: number,
+  radius: number,
+  rectX: number,
+  rectY: number,
+  rectWidth: number,
+  rectHeight: number,
+) {
+  const closestX = clamp(circleX, rectX, rectX + rectWidth)
+  const closestY = clamp(circleY, rectY, rectY + rectHeight)
+  const dx = circleX - closestX
+  const dy = circleY - closestY
+  return dx * dx + dy * dy < radius * radius
+}
+
 interface GameScreenProps {
   onBackToMain: () => void
 }
@@ -33,21 +56,25 @@ interface GameScreenProps {
 function GameScreen({ onBackToMain }: GameScreenProps) {
   const [playerX, setPlayerX] = useState((GAME_WIDTH - PLAYER_WIDTH) / 2)
   const [wire, setWire] = useState<Wire | null>(null)
-  const [ball, setBall] = useState<Ball>({
+  const [ball, setBall] = useState<Ball | null>({
     x: GAME_WIDTH / 3,
     y: BALL_RADIUS,
     vx: BALL_START_VX,
     vy: 0,
   })
+  const [hp, setHp] = useState(HP_MAX)
 
   const pressedKeys = useRef(new Set<string>())
   const playerXRef = useRef(playerX)
-  playerXRef.current = playerX
+  const wireRef = useRef(wire)
+  const isTouchingBallRef = useRef(false)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' && !pressedKeys.current.has(e.key)) {
-        setWire((prev) => prev ?? { x: playerXRef.current + PLAYER_WIDTH / 2, y: PLAYER_Y })
+      if (e.key === ' ' && !pressedKeys.current.has(e.key) && !wireRef.current) {
+        const newWire = { x: playerXRef.current + PLAYER_WIDTH / 2, y: PLAYER_Y }
+        wireRef.current = newWire
+        setWire(newWire)
       }
       pressedKeys.current.add(e.key)
     }
@@ -67,43 +94,81 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
     let frameId: number
 
     const tick = () => {
-      setPlayerX((x) => {
-        let next = x
-        if (pressedKeys.current.has('ArrowLeft')) next -= PLAYER_SPEED
-        if (pressedKeys.current.has('ArrowRight')) next += PLAYER_SPEED
-        return Math.max(0, Math.min(GAME_WIDTH - PLAYER_WIDTH, next))
-      })
+      let nextPlayerX = playerXRef.current
+      if (pressedKeys.current.has('ArrowLeft')) nextPlayerX -= PLAYER_SPEED
+      if (pressedKeys.current.has('ArrowRight')) nextPlayerX += PLAYER_SPEED
+      nextPlayerX = clamp(nextPlayerX, 0, GAME_WIDTH - PLAYER_WIDTH)
+      playerXRef.current = nextPlayerX
+      setPlayerX(nextPlayerX)
 
-      setWire((prev) => {
-        if (!prev) return prev
-        const nextY = prev.y - WIRE_SPEED
-        return nextY > 0 ? { ...prev, y: nextY } : null
-      })
+      let nextWire = wireRef.current
+      if (nextWire) {
+        const nextY = nextWire.y - WIRE_SPEED
+        nextWire = nextY > 0 ? { ...nextWire, y: nextY } : null
+      }
 
-      setBall((prev) => {
-        let { x, y, vx, vy } = prev
-        vy += GRAVITY
-        x += vx
-        y += vy
+      setBall((prevBall) => {
+        let nextBall = prevBall
 
-        if (x - BALL_RADIUS < 0) {
-          x = BALL_RADIUS
-          vx = -vx
-        } else if (x + BALL_RADIUS > GAME_WIDTH) {
-          x = GAME_WIDTH - BALL_RADIUS
-          vx = -vx
+        if (nextBall) {
+          let { x, y, vx, vy } = nextBall
+          vy += GRAVITY
+          x += vx
+          y += vy
+
+          if (x - BALL_RADIUS < 0) {
+            x = BALL_RADIUS
+            vx = -vx
+          } else if (x + BALL_RADIUS > GAME_WIDTH) {
+            x = GAME_WIDTH - BALL_RADIUS
+            vx = -vx
+          }
+
+          if (y - BALL_RADIUS < 0) {
+            y = BALL_RADIUS
+            vy = -vy
+          } else if (y + BALL_RADIUS > GAME_HEIGHT) {
+            y = GAME_HEIGHT - BALL_RADIUS
+            vy = -vy
+          }
+
+          nextBall = { x, y, vx, vy }
         }
 
-        if (y - BALL_RADIUS < 0) {
-          y = BALL_RADIUS
-          vy = -vy
-        } else if (y + BALL_RADIUS > GAME_HEIGHT) {
-          y = GAME_HEIGHT - BALL_RADIUS
-          vy = -vy
+        if (nextBall && nextWire) {
+          const dx = nextBall.x - nextWire.x
+          const dy = nextBall.y - clamp(nextBall.y, nextWire.y, PLAYER_Y)
+          if (dx * dx + dy * dy < (BALL_RADIUS + WIRE_WIDTH / 2) ** 2) {
+            nextBall = null
+            nextWire = null
+          }
         }
 
-        return { x, y, vx, vy }
+        if (
+          nextBall &&
+          circleRectOverlap(
+            nextBall.x,
+            nextBall.y,
+            BALL_RADIUS,
+            nextPlayerX,
+            PLAYER_Y,
+            PLAYER_WIDTH,
+            PLAYER_HEIGHT,
+          )
+        ) {
+          if (!isTouchingBallRef.current) {
+            isTouchingBallRef.current = true
+            setHp((prevHp) => Math.max(0, prevHp - HP_DAMAGE))
+          }
+        } else {
+          isTouchingBallRef.current = false
+        }
+
+        return nextBall
       })
+
+      wireRef.current = nextWire
+      setWire(nextWire)
 
       frameId = requestAnimationFrame(tick)
     }
@@ -114,6 +179,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
 
   return (
     <div className="game-screen">
+      <div className="hud">HP: {hp}</div>
       <div className="game-area" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
         <div
           className="player"
@@ -124,15 +190,17 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
             height: PLAYER_HEIGHT,
           }}
         />
-        <div
-          className="ball"
-          style={{
-            left: ball.x - BALL_RADIUS,
-            top: ball.y - BALL_RADIUS,
-            width: BALL_RADIUS * 2,
-            height: BALL_RADIUS * 2,
-          }}
-        />
+        {ball && (
+          <div
+            className="ball"
+            style={{
+              left: ball.x - BALL_RADIUS,
+              top: ball.y - BALL_RADIUS,
+              width: BALL_RADIUS * 2,
+              height: BALL_RADIUS * 2,
+            }}
+          />
+        )}
         {wire && (
           <div
             className="wire"
