@@ -9,15 +9,20 @@ function getHighScore(): number {
 
 interface MainScreenProps {
   onStart: () => void
+  onExit: () => void
 }
 
-function MainScreen({ onStart }: MainScreenProps) {
+function MainScreen({ onStart, onExit }: MainScreenProps) {
   return (
     <div className="main-screen">
       <h1 className="title">PANG</h1>
 
       <button type="button" className="start-button" onClick={onStart}>
         시작하기
+      </button>
+
+      <button type="button" className="exit-button" onClick={onExit}>
+        게임 종료
       </button>
 
       <div className="controls-hint">
