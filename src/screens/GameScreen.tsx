@@ -49,6 +49,13 @@ function circleRectOverlap(
   return dx * dx + dy * dy < radius * radius
 }
 
+const initialBall: Ball = {
+  x: GAME_WIDTH / 3,
+  y: BALL_RADIUS,
+  vx: BALL_START_VX,
+  vy: 0,
+}
+
 interface GameScreenProps {
   onBackToMain: () => void
 }
@@ -56,17 +63,14 @@ interface GameScreenProps {
 function GameScreen({ onBackToMain }: GameScreenProps) {
   const [playerX, setPlayerX] = useState((GAME_WIDTH - PLAYER_WIDTH) / 2)
   const [wire, setWire] = useState<Wire | null>(null)
-  const [ball, setBall] = useState<Ball | null>({
-    x: GAME_WIDTH / 3,
-    y: BALL_RADIUS,
-    vx: BALL_START_VX,
-    vy: 0,
-  })
+  const [ball, setBall] = useState<Ball | null>(initialBall)
   const [hp, setHp] = useState(HP_MAX)
 
   const pressedKeys = useRef(new Set<string>())
   const playerXRef = useRef(playerX)
   const wireRef = useRef(wire)
+  const ballRef = useRef(ball)
+  const hpRef = useRef(hp)
   const isTouchingBallRef = useRef(false)
 
   useEffect(() => {
@@ -98,8 +102,6 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
       if (pressedKeys.current.has('ArrowLeft')) nextPlayerX -= PLAYER_SPEED
       if (pressedKeys.current.has('ArrowRight')) nextPlayerX += PLAYER_SPEED
       nextPlayerX = clamp(nextPlayerX, 0, GAME_WIDTH - PLAYER_WIDTH)
-      playerXRef.current = nextPlayerX
-      setPlayerX(nextPlayerX)
 
       let nextWire = wireRef.current
       if (nextWire) {
@@ -107,68 +109,69 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         nextWire = nextY > 0 ? { ...nextWire, y: nextY } : null
       }
 
-      setBall((prevBall) => {
-        let nextBall = prevBall
+      let nextBall = ballRef.current
+      if (nextBall) {
+        let { x, y, vx, vy } = nextBall
+        vy += GRAVITY
+        x += vx
+        y += vy
 
-        if (nextBall) {
-          let { x, y, vx, vy } = nextBall
-          vy += GRAVITY
-          x += vx
-          y += vy
-
-          if (x - BALL_RADIUS < 0) {
-            x = BALL_RADIUS
-            vx = -vx
-          } else if (x + BALL_RADIUS > GAME_WIDTH) {
-            x = GAME_WIDTH - BALL_RADIUS
-            vx = -vx
-          }
-
-          if (y - BALL_RADIUS < 0) {
-            y = BALL_RADIUS
-            vy = -vy
-          } else if (y + BALL_RADIUS > GAME_HEIGHT) {
-            y = GAME_HEIGHT - BALL_RADIUS
-            vy = -vy
-          }
-
-          nextBall = { x, y, vx, vy }
+        if (x - BALL_RADIUS < 0) {
+          x = BALL_RADIUS
+          vx = -vx
+        } else if (x + BALL_RADIUS > GAME_WIDTH) {
+          x = GAME_WIDTH - BALL_RADIUS
+          vx = -vx
         }
 
-        if (nextBall && nextWire) {
-          const dx = nextBall.x - nextWire.x
-          const dy = nextBall.y - clamp(nextBall.y, nextWire.y, PLAYER_Y)
-          if (dx * dx + dy * dy < (BALL_RADIUS + WIRE_WIDTH / 2) ** 2) {
-            nextBall = null
-            nextWire = null
-          }
+        if (y - BALL_RADIUS < 0) {
+          y = BALL_RADIUS
+          vy = -vy
+        } else if (y + BALL_RADIUS > GAME_HEIGHT) {
+          y = GAME_HEIGHT - BALL_RADIUS
+          vy = -vy
         }
 
-        if (
-          nextBall &&
-          circleRectOverlap(
-            nextBall.x,
-            nextBall.y,
-            BALL_RADIUS,
-            nextPlayerX,
-            PLAYER_Y,
-            PLAYER_WIDTH,
-            PLAYER_HEIGHT,
-          )
-        ) {
-          if (!isTouchingBallRef.current) {
-            isTouchingBallRef.current = true
-            setHp((prevHp) => Math.max(0, prevHp - HP_DAMAGE))
-          }
-        } else {
-          isTouchingBallRef.current = false
+        nextBall = { x, y, vx, vy }
+      }
+
+      if (nextBall && nextWire) {
+        const dx = nextBall.x - nextWire.x
+        const dy = nextBall.y - clamp(nextBall.y, nextWire.y, PLAYER_Y)
+        if (dx * dx + dy * dy < (BALL_RADIUS + WIRE_WIDTH / 2) ** 2) {
+          nextBall = null
+          nextWire = null
         }
+      }
 
-        return nextBall
-      })
+      if (
+        nextBall &&
+        circleRectOverlap(
+          nextBall.x,
+          nextBall.y,
+          BALL_RADIUS,
+          nextPlayerX,
+          PLAYER_Y,
+          PLAYER_WIDTH,
+          PLAYER_HEIGHT,
+        )
+      ) {
+        if (!isTouchingBallRef.current) {
+          isTouchingBallRef.current = true
+          hpRef.current = Math.max(0, hpRef.current - HP_DAMAGE)
+        }
+      } else {
+        isTouchingBallRef.current = false
+      }
 
+      playerXRef.current = nextPlayerX
       wireRef.current = nextWire
+      ballRef.current = nextBall
+
+      setPlayerX(nextPlayerX)
       setWire(nextWire)
+      setBall(nextBall)
+      setHp(hpRef.current)
 
       frameId = requestAnimationFrame(tick)
     }
