@@ -17,6 +17,12 @@ const BALL_START_VX = 4
 const HP_MAX = 100
 const HP_DAMAGE = 10
 
+const TIME_LIMIT_SECONDS = 45
+const BALL_SCORE = 100
+const TIME_BONUS_PER_SECOND = 10
+
+type Status = 'playing' | 'clear' | 'fail' | 'gameover'
+
 interface Wire {
   x: number
   y: number
@@ -49,11 +55,8 @@ function circleRectOverlap(
   return dx * dx + dy * dy < radius * radius
 }
 
-const initialBall: Ball = {
-  x: GAME_WIDTH / 3,
-  y: BALL_RADIUS,
-  vx: BALL_START_VX,
-  vy: 0,
+function createInitialBall(): Ball {
+  return { x: GAME_WIDTH / 3, y: BALL_RADIUS, vx: BALL_START_VX, vy: 0 }
 }
 
 interface GameScreenProps {
@@ -63,19 +66,31 @@ interface GameScreenProps {
 function GameScreen({ onBackToMain }: GameScreenProps) {
   const [playerX, setPlayerX] = useState((GAME_WIDTH - PLAYER_WIDTH) / 2)
   const [wire, setWire] = useState<Wire | null>(null)
-  const [ball, setBall] = useState<Ball | null>(initialBall)
+  const [ball, setBall] = useState<Ball | null>(createInitialBall)
   const [hp, setHp] = useState(HP_MAX)
+  const [timeLeft, setTimeLeft] = useState(TIME_LIMIT_SECONDS)
+  const [score, setScore] = useState(0)
+  const [status, setStatus] = useState<Status>('playing')
 
   const pressedKeys = useRef(new Set<string>())
   const playerXRef = useRef(playerX)
   const wireRef = useRef(wire)
   const ballRef = useRef(ball)
   const hpRef = useRef(hp)
+  const scoreRef = useRef(0)
+  const statusRef = useRef<Status>('playing')
+  const startTimeRef = useRef<number | null>(null)
   const isTouchingBallRef = useRef(false)
+  const runLoopRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' && !pressedKeys.current.has(e.key) && !wireRef.current) {
+      if (
+        e.key === ' ' &&
+        !pressedKeys.current.has(e.key) &&
+        !wireRef.current &&
+        statusRef.current === 'playing'
+      ) {
         const newWire = { x: playerXRef.current + PLAYER_WIDTH / 2, y: PLAYER_Y }
         wireRef.current = newWire
         setWire(newWire)
@@ -97,7 +112,11 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
   useEffect(() => {
     let frameId: number
 
-    const tick = () => {
+    const tick = (timestamp: number) => {
+      if (startTimeRef.current === null) startTimeRef.current = timestamp
+      const elapsedSeconds = (timestamp - startTimeRef.current) / 1000
+      const remaining = Math.max(0, TIME_LIMIT_SECONDS - elapsedSeconds)
+
       let nextPlayerX = playerXRef.current
       if (pressedKeys.current.has('ArrowLeft')) nextPlayerX -= PLAYER_SPEED
       if (pressedKeys.current.has('ArrowRight')) nextPlayerX += PLAYER_SPEED
@@ -141,6 +160,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         if (dx * dx + dy * dy < (BALL_RADIUS + WIRE_WIDTH / 2) ** 2) {
           nextBall = null
           nextWire = null
+          scoreRef.current += BALL_SCORE
         }
       }
 
@@ -164,25 +184,77 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         isTouchingBallRef.current = false
       }
 
+      let nextStatus: Status = 'playing'
+      if (hpRef.current <= 0) {
+        nextStatus = 'gameover'
+      } else if (nextBall === null) {
+        nextStatus = 'clear'
+        scoreRef.current += Math.floor(remaining) * TIME_BONUS_PER_SECOND
+      } else if (remaining <= 0) {
+        nextStatus = 'fail'
+      }
+
       playerXRef.current = nextPlayerX
       wireRef.current = nextWire
       ballRef.current = nextBall
+      statusRef.current = nextStatus
 
       setPlayerX(nextPlayerX)
       setWire(nextWire)
       setBall(nextBall)
       setHp(hpRef.current)
+      setTimeLeft(remaining)
+      setScore(scoreRef.current)
+      setStatus(nextStatus)
 
-      frameId = requestAnimationFrame(tick)
+      if (nextStatus === 'playing') {
+        frameId = requestAnimationFrame(tick)
+      }
     }
 
-    frameId = requestAnimationFrame(tick)
+    runLoopRef.current = () => {
+      startTimeRef.current = null
+      frameId = requestAnimationFrame(tick)
+    }
+    runLoopRef.current()
+
     return () => cancelAnimationFrame(frameId)
   }, [])
 
+  const handleRestart = () => {
+    playerXRef.current = (GAME_WIDTH - PLAYER_WIDTH) / 2
+    wireRef.current = null
+    ballRef.current = createInitialBall()
+    hpRef.current = HP_MAX
+    scoreRef.current = 0
+    statusRef.current = 'playing'
+    isTouchingBallRef.current = false
+    pressedKeys.current.clear()
+
+    setPlayerX(playerXRef.current)
+    setWire(null)
+    setBall(ballRef.current)
+    setHp(HP_MAX)
+    setTimeLeft(TIME_LIMIT_SECONDS)
+    setScore(0)
+    setStatus('playing')
+
+    runLoopRef.current()
+  }
+
+  const statusMessage: Record<Exclude<Status, 'playing'>, string> = {
+    clear: '스테이지 클리어!',
+    fail: '시간 초과! 실패했습니다.',
+    gameover: '게임 오버',
+  }
+
   return (
     <div className="game-screen">
-      <div className="hud">HP: {hp}</div>
+      <div className="hud">
+        <span>HP: {hp}</span>
+        <span>남은 시간: {Math.ceil(timeLeft)}초</span>
+        <span>점수: {score}</span>
+      </div>
       <div className="game-area" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
         <div
           className="player"
@@ -214,6 +286,21 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
               height: PLAYER_Y - wire.y,
             }}
           />
+        )}
+
+        {status !== 'playing' && (
+          <div className="result-overlay">
+            <p className="result-message">{statusMessage[status]}</p>
+            <p className="result-score">최종 점수: {score}</p>
+            <div className="result-buttons">
+              <button type="button" className="back-button" onClick={handleRestart}>
+                다시 시작
+              </button>
+              <button type="button" className="back-button" onClick={onBackToMain}>
+                메인 화면으로
+              </button>
+            </div>
+          </div>
         )}
       </div>
       <button type="button" className="back-button" onClick={onBackToMain}>
