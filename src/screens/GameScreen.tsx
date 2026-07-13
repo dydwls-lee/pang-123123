@@ -11,8 +11,8 @@ const WIRE_SPEED = 10
 const WIRE_WIDTH = 3
 
 const BALL_RADIUS = 25
-const GRAVITY = 0.3
-const BALL_START_VX = 4
+const GRAVITY = 0.2
+const BALL_START_VX = 2.5
 
 const HP_MAX = 100
 const HP_DAMAGE = 10
@@ -20,6 +20,8 @@ const HP_DAMAGE = 10
 const TIME_LIMIT_SECONDS = 45
 const BALL_SCORE = 100
 const TIME_BONUS_PER_SECOND = 10
+
+const HIGH_SCORE_KEY = 'pang_highscore'
 
 type Status = 'playing' | 'clear' | 'fail' | 'gameover'
 
@@ -55,8 +57,19 @@ function circleRectOverlap(
   return dx * dx + dy * dy < radius * radius
 }
 
-function createInitialBall(): Ball {
-  return { x: GAME_WIDTH / 3, y: BALL_RADIUS, vx: BALL_START_VX, vy: 0 }
+// Mission 1: 튜토리얼 성격의 단순한 필드, 느린 공 2개로 시작.
+function createInitialBalls(): Ball[] {
+  return [
+    { x: GAME_WIDTH / 3, y: BALL_RADIUS, vx: BALL_START_VX, vy: 0 },
+    { x: (GAME_WIDTH / 3) * 2, y: BALL_RADIUS, vx: -BALL_START_VX, vy: 0 },
+  ]
+}
+
+function saveHighScoreIfBetter(score: number) {
+  const stored = Number(localStorage.getItem(HIGH_SCORE_KEY) ?? 0)
+  if (score > stored) {
+    localStorage.setItem(HIGH_SCORE_KEY, String(score))
+  }
 }
 
 interface GameScreenProps {
@@ -66,7 +79,7 @@ interface GameScreenProps {
 function GameScreen({ onBackToMain }: GameScreenProps) {
   const [playerX, setPlayerX] = useState((GAME_WIDTH - PLAYER_WIDTH) / 2)
   const [wire, setWire] = useState<Wire | null>(null)
-  const [ball, setBall] = useState<Ball | null>(createInitialBall)
+  const [balls, setBalls] = useState<Ball[]>(createInitialBalls)
   const [hp, setHp] = useState(HP_MAX)
   const [timeLeft, setTimeLeft] = useState(TIME_LIMIT_SECONDS)
   const [score, setScore] = useState(0)
@@ -75,7 +88,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
   const pressedKeys = useRef(new Set<string>())
   const playerXRef = useRef(playerX)
   const wireRef = useRef(wire)
-  const ballRef = useRef(ball)
+  const ballsRef = useRef(balls)
   const hpRef = useRef(hp)
   const scoreRef = useRef(0)
   const statusRef = useRef<Status>('playing')
@@ -128,9 +141,8 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         nextWire = nextY > 0 ? { ...nextWire, y: nextY } : null
       }
 
-      let nextBall = ballRef.current
-      if (nextBall) {
-        let { x, y, vx, vy } = nextBall
+      let nextBalls = ballsRef.current.map((b) => {
+        let { x, y, vx, vy } = b
         vy += GRAVITY
         x += vx
         y += vy
@@ -151,31 +163,26 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
           vy = -vy
         }
 
-        nextBall = { x, y, vx, vy }
-      }
+        return { x, y, vx, vy }
+      })
 
-      if (nextBall && nextWire) {
-        const dx = nextBall.x - nextWire.x
-        const dy = nextBall.y - clamp(nextBall.y, nextWire.y, PLAYER_Y)
-        if (dx * dx + dy * dy < (BALL_RADIUS + WIRE_WIDTH / 2) ** 2) {
-          nextBall = null
+      if (nextWire) {
+        const hitIndex = nextBalls.findIndex((b) => {
+          const dx = b.x - nextWire!.x
+          const dy = b.y - clamp(b.y, nextWire!.y, PLAYER_Y)
+          return dx * dx + dy * dy < (BALL_RADIUS + WIRE_WIDTH / 2) ** 2
+        })
+        if (hitIndex !== -1) {
+          nextBalls = nextBalls.filter((_, i) => i !== hitIndex)
           nextWire = null
           scoreRef.current += BALL_SCORE
         }
       }
 
-      if (
-        nextBall &&
-        circleRectOverlap(
-          nextBall.x,
-          nextBall.y,
-          BALL_RADIUS,
-          nextPlayerX,
-          PLAYER_Y,
-          PLAYER_WIDTH,
-          PLAYER_HEIGHT,
-        )
-      ) {
+      const touchingPlayer = nextBalls.some((b) =>
+        circleRectOverlap(b.x, b.y, BALL_RADIUS, nextPlayerX, PLAYER_Y, PLAYER_WIDTH, PLAYER_HEIGHT),
+      )
+      if (touchingPlayer) {
         if (!isTouchingBallRef.current) {
           isTouchingBallRef.current = true
           hpRef.current = Math.max(0, hpRef.current - HP_DAMAGE)
@@ -187,21 +194,25 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
       let nextStatus: Status = 'playing'
       if (hpRef.current <= 0) {
         nextStatus = 'gameover'
-      } else if (nextBall === null) {
+      } else if (nextBalls.length === 0) {
         nextStatus = 'clear'
         scoreRef.current += Math.floor(remaining) * TIME_BONUS_PER_SECOND
       } else if (remaining <= 0) {
         nextStatus = 'fail'
       }
 
+      if (nextStatus === 'clear') {
+        saveHighScoreIfBetter(scoreRef.current)
+      }
+
       playerXRef.current = nextPlayerX
       wireRef.current = nextWire
-      ballRef.current = nextBall
+      ballsRef.current = nextBalls
       statusRef.current = nextStatus
 
       setPlayerX(nextPlayerX)
       setWire(nextWire)
-      setBall(nextBall)
+      setBalls(nextBalls)
       setHp(hpRef.current)
       setTimeLeft(remaining)
       setScore(scoreRef.current)
@@ -224,7 +235,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
   const handleRestart = () => {
     playerXRef.current = (GAME_WIDTH - PLAYER_WIDTH) / 2
     wireRef.current = null
-    ballRef.current = createInitialBall()
+    ballsRef.current = createInitialBalls()
     hpRef.current = HP_MAX
     scoreRef.current = 0
     statusRef.current = 'playing'
@@ -233,7 +244,7 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
 
     setPlayerX(playerXRef.current)
     setWire(null)
-    setBall(ballRef.current)
+    setBalls(ballsRef.current)
     setHp(HP_MAX)
     setTimeLeft(TIME_LIMIT_SECONDS)
     setScore(0)
@@ -265,17 +276,18 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
             height: PLAYER_HEIGHT,
           }}
         />
-        {ball && (
+        {balls.map((b, i) => (
           <div
+            key={i}
             className="ball"
             style={{
-              left: ball.x - BALL_RADIUS,
-              top: ball.y - BALL_RADIUS,
+              left: b.x - BALL_RADIUS,
+              top: b.y - BALL_RADIUS,
               width: BALL_RADIUS * 2,
               height: BALL_RADIUS * 2,
             }}
           />
-        )}
+        ))}
         {wire && (
           <div
             className="wire"
