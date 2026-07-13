@@ -1,0 +1,39 @@
+.main-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  height: 100vh;
+  text-align: center;
+}
+
+.title {
+  font-size: 72px;
+  letter-spacing: 8px;
+  color: var(--accent);
+}
+
+.start-button {
+  font-size: 20px;
+  padding: 12px 32px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid var(--accent-border);
+  cursor: pointer;
+  transition: box-shadow 0.3s;
+}
+
+.start-button:hover {
+  box-shadow: var(--shadow);
+}
+
+.controls-hint p {
+  margin: 4px 0;
+}
+
+.high-score {
+  color: var(--text-h);
+  font-weight: 500;
+}
