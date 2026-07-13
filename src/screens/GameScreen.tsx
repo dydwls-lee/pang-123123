@@ -10,9 +10,20 @@ const PLAYER_SPEED = 6
 const WIRE_SPEED = 10
 const WIRE_WIDTH = 3
 
+const BALL_RADIUS = 25
+const GRAVITY = 0.3
+const BALL_START_VX = 4
+
 interface Wire {
   x: number
   y: number
+}
+
+interface Ball {
+  x: number
+  y: number
+  vx: number
+  vy: number
 }
 
 interface GameScreenProps {
@@ -22,6 +33,12 @@ interface GameScreenProps {
 function GameScreen({ onBackToMain }: GameScreenProps) {
   const [playerX, setPlayerX] = useState((GAME_WIDTH - PLAYER_WIDTH) / 2)
   const [wire, setWire] = useState<Wire | null>(null)
+  const [ball, setBall] = useState<Ball>({
+    x: GAME_WIDTH / 3,
+    y: BALL_RADIUS,
+    vx: BALL_START_VX,
+    vy: 0,
+  })
 
   const pressedKeys = useRef(new Set<string>())
   const playerXRef = useRef(playerX)
@@ -63,6 +80,31 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
         return nextY > 0 ? { ...prev, y: nextY } : null
       })
 
+      setBall((prev) => {
+        let { x, y, vx, vy } = prev
+        vy += GRAVITY
+        x += vx
+        y += vy
+
+        if (x - BALL_RADIUS < 0) {
+          x = BALL_RADIUS
+          vx = -vx
+        } else if (x + BALL_RADIUS > GAME_WIDTH) {
+          x = GAME_WIDTH - BALL_RADIUS
+          vx = -vx
+        }
+
+        if (y - BALL_RADIUS < 0) {
+          y = BALL_RADIUS
+          vy = -vy
+        } else if (y + BALL_RADIUS > GAME_HEIGHT) {
+          y = GAME_HEIGHT - BALL_RADIUS
+          vy = -vy
+        }
+
+        return { x, y, vx, vy }
+      })
+
       frameId = requestAnimationFrame(tick)
     }
 
@@ -80,6 +122,15 @@ function GameScreen({ onBackToMain }: GameScreenProps) {
             top: PLAYER_Y,
             width: PLAYER_WIDTH,
             height: PLAYER_HEIGHT,
+          }}
+        />
+        <div
+          className="ball"
+          style={{
+            left: ball.x - BALL_RADIUS,
+            top: ball.y - BALL_RADIUS,
+            width: BALL_RADIUS * 2,
+            height: BALL_RADIUS * 2,
           }}
         />
         {wire && (

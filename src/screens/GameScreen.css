@@ -26,6 +26,12 @@
   background: #fff;
 }
 
+.ball {
+  position: absolute;
+  background: #ff5c5c;
+  border-radius: 50%;
+}
+
 .back-button {
   font-size: 16px;
   padding: 8px 20px;
